@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 # ── resolve project root ──────────────────────────────────────────────────────
 ROOT = Path(__file__).parent
-ENV_FILE = ROOT / ".env.example"
+ENV_FILE = ROOT / ".env"
 CONN_FILE = ROOT / "connections.json"
 
 # ── load environment variables ────────────────────────────────────────────────
@@ -56,18 +56,22 @@ def connect_postgresql(cfg: dict):
     return version
 
 
+def _resolve(val: str) -> str:
+    if val.startswith("${") and val.endswith("}"):
+        env_var = val[2:-1]
+        return os.getenv(env_var, "localhost:8000") # Default fallback
+    return val
+
 def connect_neo4j(cfg: dict):
     from neo4j import GraphDatabase
-    driver = GraphDatabase.driver(
-        cfg["url"],
-        auth=(cfg["userid"], cfg["password"]),
-        connection_timeout=5,
-    )
-    with driver.session() as session:
-        result = session.run("RETURN 'Neo4j connected' AS msg")
-        msg = result.single()["msg"]
-    driver.close()
-    return msg
+    url = cfg.get("url")
+    if not url or "None" in str(url): return "heartbeat=failed_missing_url"
+    try:
+        driver = GraphDatabase.driver(url, auth=(cfg.get("userid"), cfg.get("password")))
+        driver.verify_connectivity()
+        return "heartbeat=alive"
+    except Exception as e:
+        return f"heartbeat=failed_{str(e)}"
 
 
 def connect_influxdb(cfg: dict):
