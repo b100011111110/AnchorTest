@@ -9,6 +9,11 @@
     "userid": "${NEO4J_USER}",
     "password": "${NEO4J_PASSWORD}"
   },
+  "influxdb": {
+    "url": "${INFLUXDB_URL}",
+    "userid": "${INFLUXDB_ORG}",
+    "password": "${INFLUXDB_TOKEN}"
+  },
   "chromadb": {
     "url": "${CHROMADB_URL}",
     "userid": "${CHROMADB_USER}",
