@@ -1,0 +1,404 @@
+# System Health Management API v1.0 — Full Detailed Specification
+
+## 1. Introduction
+
+This document defines a deterministic, machine-verifiable API for monitoring and managing system health across distributed or remote systems. The API is designed to expose runtime system metrics, process-level information, aggregated statistics, and controlled shutdown capability.
+
+The system supports the following core operations:
+
+1. Status (real-time system stats)
+2. Process (running process information)
+3. Stats (aggregated system capacity)
+4. Close (graceful shutdown)
+
+This specification ensures strict typing, explicit validation, predictable state transitions, and verifiable outputs.
+
+---
+
+## 2. Global Design Principles
+
+### 2.1 Determinism
+
+All responses must be reproducible for identical system states.
+
+### 2.2 Strong Typing
+
+Allowed primitive types:
+
+* Int
+* Float
+* String
+* Bool
+* Date (ISO8601)
+
+### 2.3 Observability First
+
+All endpoints must provide metrics useful for monitoring, alerting, and debugging.
+
+### 2.4 No Implicit Behavior
+
+Every field, constraint, and state transition must be explicitly defined.
+
+---
+
+## 3. Global Enums
+
+System_State = ["RUNNING", "DEGRADED", "DOWN", "SHUTTING_DOWN"]
+Process_State = ["RUNNING", "SLEEPING", "STOPPED", "ZOMBIE"]
+Error_Code = [
+"AUTH_FAILED",
+"INVALID_SCHEMA",
+"SYSTEM_UNAVAILABLE",
+"INVALID_PROCESS_ID",
+"SHUTDOWN_IN_PROGRESS"
+]
+
+---
+
+## 4. Global Response Envelope
+
+### Success
+
+{
+"success": true,
+"data": {},
+"request_id": "string"
+}
+
+### Failure
+
+{
+"success": false,
+"error": {
+"code": "string",
+"message": "string",
+"field": "string|null"
+},
+"request_id": "string"
+}
+
+---
+
+## 5. Endpoint: STATUS
+
+### 5.1 Identity
+
+* Method: GET
+* Path: /v1/system/status
+* Feature: System_Health
+* Idempotency: Idempotent
+
+### 5.2 Description
+
+Provides real-time system metrics including CPU usage, memory usage, and uptime. This endpoint reflects the instantaneous operational condition of the system.
+
+### 5.3 Response Fields
+
+Field: system_state
+
+* Type: String
+* Enum: System_State
+* Required: True
+
+Field: cpu_usage_percent
+
+* Type: Float
+* Min: 0
+* Max: 100
+* Required: True
+
+Field: memory_usage_percent
+
+* Type: Float
+* Min: 0
+* Max: 100
+* Required: True
+
+Field: uptime_seconds
+
+* Type: Int
+* Min: 0
+* Max: 315360000
+* Required: True
+
+Field: active_process_count
+
+* Type: Int
+* Min: 0
+* Max: 100000
+* Required: True
+
+### 5.4 Pre-Conditions
+
+* System must be reachable
+
+### 5.5 Post-Conditions
+
+* None (read-only)
+
+### 5.6 Success Payload
+
+{
+"success": true,
+"data": {
+"system_state": "RUNNING",
+"cpu_usage_percent": 45.5,
+"memory_usage_percent": 62.3,
+"uptime_seconds": 102030,
+"active_process_count": 152
+}
+}
+
+### 5.7 Error Mapping
+
+* SYSTEM_UNAVAILABLE → 503
+
+### 5.8 Concurrency
+
+* Fully parallelizable
+
+---
+
+## 6. Endpoint: PROCESS
+
+### 6.1 Identity
+
+* Method: GET
+* Path: /v1/system/process
+* Feature: System_Health
+* Idempotency: Idempotent
+
+### 6.2 Description
+
+Returns a list of currently running processes with resource usage.
+
+### 6.3 Response Fields
+
+Field: process_id
+
+* Type: Int
+* Min: 1
+* Max: 999999
+
+Field: name
+
+* Type: String
+* Min_Length: 1
+* Max_Length: 100
+
+Field: cpu_percent
+
+* Type: Float
+* Min: 0
+* Max: 100
+
+Field: memory_mb
+
+* Type: Float
+* Min: 0
+* Max: 1048576
+
+Field: state
+
+* Type: String
+* Enum: Process_State
+
+### 6.4 Success Payload
+
+{
+"success": true,
+"data": [
+{
+"process_id": 101,
+"name": "nginx",
+"cpu_percent": 2.5,
+"memory_mb": 150.0,
+"state": "RUNNING"
+}
+]
+}
+
+### 6.5 Error Mapping
+
+* SYSTEM_UNAVAILABLE → 503
+
+### 6.6 Concurrency
+
+* Parallelizable
+
+---
+
+## 7. Endpoint: STATS
+
+### 7.1 Identity
+
+* Method: GET
+* Path: /v1/system/stats
+* Feature: System_Health
+* Idempotency: Idempotent
+
+### 7.2 Description
+
+Provides total system capacity and hardware-level metrics.
+
+### 7.3 Response Fields
+
+Field: total_ram_mb
+
+* Type: Int
+* Min: 128
+* Max: 1048576
+
+Field: total_cpu_cores
+
+* Type: Int
+* Min: 1
+* Max: 256
+
+Field: total_storage_gb
+
+* Type: Int
+* Min: 1
+* Max: 1048576
+
+Field: available_storage_gb
+
+* Type: Int
+* Min: 0
+* Max: total_storage_gb
+
+### 7.4 Cross Field Constraint
+
+IF available_storage_gb > total_storage_gb → reject
+
+### 7.5 Success Payload
+
+{
+"success": true,
+"data": {
+"total_ram_mb": 16384,
+"total_cpu_cores": 8,
+"total_storage_gb": 512,
+"available_storage_gb": 200
+}
+}
+
+### 7.6 Error Mapping
+
+* SYSTEM_UNAVAILABLE → 503
+
+### 7.7 Concurrency
+
+* Fully parallelizable
+
+---
+
+## 8. Endpoint: CLOSE (SHUTDOWN)
+
+### 8.1 Identity
+
+* Method: POST
+* Path: /v1/system/close
+* Feature: System_Control
+* Idempotency: Non-Idempotent
+
+### 8.2 Description
+
+Triggers a graceful shutdown of the system. Once initiated, the system transitions to SHUTTING_DOWN and stops accepting new requests.
+
+### 8.3 Pre-Conditions
+
+* System state == RUNNING or DEGRADED
+
+### 8.4 Post-Conditions
+
+* system_state = SHUTTING_DOWN
+* All active connections terminated after completion
+
+### 8.5 Success Payload
+
+{
+"success": true,
+"data": {
+"message": "goodbye",
+"system_state": "SHUTTING_DOWN"
+}
+}
+
+### 8.6 Error Mapping
+
+* SHUTDOWN_IN_PROGRESS → 409
+
+### 8.7 Concurrency
+
+* Requires global system lock
+* No parallel execution allowed
+
+---
+
+## 9. Global Validation Order
+
+1. Authentication
+2. Endpoint existence
+3. Schema validation
+4. Field constraints
+5. Business logic
+6. System state validation
+
+---
+
+## 10. Observability
+
+### Metrics
+
+* cpu_usage_percent
+* memory_usage_percent
+* request_rate
+* system_state_changes
+
+### Logs
+
+{
+"request_id": "string",
+"endpoint": "string",
+"status": 200,
+"latency_ms": 12
+}
+
+---
+
+## 11. Persistence (if enabled)
+
+Optional table: system_logs
+
+Columns:
+
+* id
+* timestamp
+* cpu
+* memory
+* state
+
+Verification Query:
+SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 1;
+
+---
+
+## 12. Final Notes
+
+This API is designed for:
+
+* Remote health monitoring
+* Automated orchestration systems
+* Distributed system observability
+* Fault detection and recovery pipelines
+
+The strict constraints enable integration with:
+
+* Graph-based reasoning engines
+* Automated validation tools
+* Real-time monitoring dashboards
+
+---
+
+End of Document

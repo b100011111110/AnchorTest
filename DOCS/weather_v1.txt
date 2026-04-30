@@ -1,0 +1,396 @@
+# Weather API Design v1.0 — Full Professional Specification
+
+## 1. Introduction
+
+This document defines a deterministic, strongly-typed, production-grade API for retrieving weather information across multiple locations. The API supports current conditions, forecasts, historical summaries, and system-level health for weather data pipelines.
+
+The system is designed for:
+
+* Real-time weather retrieval
+* Forecast modeling access
+* Historical trend analysis
+* Integration with monitoring and analytics systems
+
+Core operations:
+
+1. Current Weather
+2. Forecast Weather
+3. Historical Weather
+4. Location Search
+5. System Health
+
+---
+
+## 2. Global Design Principles
+
+### 2.1 Deterministic Outputs
+
+Given identical inputs and upstream data state, the API must produce identical outputs.
+
+### 2.2 Strong Typing
+
+All fields must map to:
+
+* Int
+* Float
+* String
+* Bool
+* Date (ISO8601)
+
+### 2.3 Units Standardization
+
+* Temperature: Celsius
+* Wind Speed: km/h
+* Pressure: hPa
+* Precipitation: mm
+
+### 2.4 Explicit Constraints
+
+Every field defines:
+
+* Min / Max
+* Regex (if applicable)
+* Required flag
+* Nullability
+
+---
+
+## 3. Global Enums
+
+Weather_Condition = ["CLEAR", "CLOUDY", "RAIN", "STORM", "SNOW", "FOG"]
+
+Error_Code = [
+"AUTH_FAILED",
+"INVALID_SCHEMA",
+"INVALID_LOCATION",
+"DATA_NOT_AVAILABLE",
+"DATE_OUT_OF_RANGE"
+]
+
+---
+
+## 4. Global Response Envelope
+
+### Success
+
+{
+"success": true,
+"data": {},
+"request_id": "string"
+}
+
+### Failure
+
+{
+"success": false,
+"error": {
+"code": "string",
+"message": "string",
+"field": "string|null"
+},
+"request_id": "string"
+}
+
+---
+
+## 5. Endpoint: CURRENT WEATHER
+
+### 5.1 Identity
+
+* Method: GET
+* Path: /v1/weather/current
+* Feature: Weather_Data
+* Idempotency: Idempotent
+
+### 5.2 Query Parameters
+
+Field: location
+
+* Type: String
+* Required: True
+* Min_Length: 2
+* Max_Length: 100
+
+Field: lat
+
+* Type: Float
+* Min: -90
+* Max: 90
+* Required: False
+
+Field: lon
+
+* Type: Float
+* Min: -180
+* Max: 180
+* Required: False
+
+### 5.3 Cross Field Constraint
+
+IF lat provided THEN lon required
+
+### 5.4 Response Fields
+
+Field: temperature_c
+
+* Type: Float
+* Min: -100
+* Max: 60
+
+Field: humidity_percent
+
+* Type: Float
+* Min: 0
+* Max: 100
+
+Field: wind_speed_kmh
+
+* Type: Float
+* Min: 0
+* Max: 300
+
+Field: condition
+
+* Enum: Weather_Condition
+
+Field: observation_time
+
+* Type: Date
+
+### 5.5 Success Payload
+
+{
+"success": true,
+"data": {
+"temperature_c": 28.5,
+"humidity_percent": 65,
+"wind_speed_kmh": 12.3,
+"condition": "CLEAR",
+"observation_time": "2026-04-30T10:00:00Z"
+}
+}
+
+### 5.6 Error Mapping
+
+* INVALID_LOCATION → 404
+
+---
+
+## 6. Endpoint: FORECAST WEATHER
+
+### 6.1 Identity
+
+* Method: GET
+* Path: /v1/weather/forecast
+* Feature: Weather_Data
+* Idempotency: Idempotent
+
+### 6.2 Query Parameters
+
+Field: location
+
+* Type: String
+
+Field: days
+
+* Type: Int
+* Min: 1
+* Max: 10
+
+### 6.3 Response Fields
+
+Field: date
+
+* Type: Date
+
+Field: min_temp
+
+* Type: Float
+
+Field: max_temp
+
+* Type: Float
+
+Field: precipitation_mm
+
+* Type: Float
+
+### 6.4 Success Payload
+
+{
+"success": true,
+"data": [
+{
+"date": "2026-05-01",
+"min_temp": 22.0,
+"max_temp": 30.0,
+"precipitation_mm": 2.5
+}
+]
+}
+
+### 6.5 Error Mapping
+
+* DATE_OUT_OF_RANGE → 422
+
+---
+
+## 7. Endpoint: HISTORICAL WEATHER
+
+### 7.1 Identity
+
+* Method: GET
+* Path: /v1/weather/history
+* Feature: Weather_Data
+* Idempotency: Idempotent
+
+### 7.2 Query Parameters
+
+Field: location
+
+* Type: String
+
+Field: date
+
+* Type: Date
+
+### 7.3 Constraints
+
+* date must be in past
+
+### 7.4 Success Payload
+
+{
+"success": true,
+"data": {
+"date": "2025-04-30",
+"avg_temp": 27.5,
+"max_temp": 32.0,
+"min_temp": 24.0
+}
+}
+
+---
+
+## 8. Endpoint: LOCATION SEARCH
+
+### 8.1 Identity
+
+* Method: GET
+* Path: /v1/location/search
+* Feature: Location_Service
+* Idempotency: Idempotent
+
+### 8.2 Query Parameters
+
+Field: query
+
+* Type: String
+* Min_Length: 2
+* Max_Length: 100
+
+### 8.3 Response Fields
+
+Field: name
+
+* Type: String
+
+Field: lat
+
+* Type: Float
+
+Field: lon
+
+* Type: Float
+
+### 8.4 Success Payload
+
+{
+"success": true,
+"data": [
+{
+"name": "Bangalore",
+"lat": 12.97,
+"lon": 77.59
+}
+]
+}
+
+---
+
+## 9. Endpoint: SYSTEM HEALTH
+
+### 9.1 Identity
+
+* Method: GET
+* Path: /v1/weather/health
+* Feature: Monitoring
+* Idempotency: Idempotent
+
+### 9.2 Response Fields
+
+Field: status
+
+* Type: String
+* Enum: ["UP", "DEGRADED", "DOWN"]
+
+Field: latency_ms
+
+* Type: Int
+* Min: 0
+* Max: 10000
+
+### 9.3 Success Payload
+
+{
+"success": true,
+"data": {
+"status": "UP",
+"latency_ms": 45
+}
+}
+
+---
+
+## 10. Validation Order
+
+1. Authentication
+2. Query validation
+3. Schema validation
+4. Field constraints
+5. Business rules
+
+---
+
+## 11. Observability
+
+Metrics:
+
+* request_rate
+* latency
+* error_rate
+
+Logs:
+{
+"request_id": "string",
+"endpoint": "string",
+"status": 200
+}
+
+---
+
+## 12. Concurrency
+
+* All endpoints are read-heavy
+* Fully parallelizable
+* No locking required
+
+---
+
+## 13. Final Notes
+
+This API is designed for high scalability, deterministic behavior, and integration into analytics and monitoring systems.
+
+---
+
+End of Document
